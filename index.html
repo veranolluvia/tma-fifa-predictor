@@ -1230,17 +1230,31 @@ async function confirmExport(){
     return;
   }
 
+  // Immediate feedback while requests are in flight
+  const header = document.querySelector('.export-header');
+  const originalLabel = header.textContent;
+  header.textContent = "Submitting...";
+  header.style.pointerEvents = 'none';
+
+  // Fire all submissions concurrently - each still retries up to 2x on its own
+  const results = await Promise.all(toSubmit.map(async item=>{
+    const ok = await submitOneToSheet(item.payload, 2);
+    return {m: item.m, ok: ok};
+  }));
+
+  header.textContent = originalLabel;
+  header.style.pointerEvents = '';
+
   const succeeded = [];
   const failed = [];
-  for(const item of toSubmit){
-    const ok = await submitOneToSheet(item.payload, 2);
-    if(ok){
-      succeeded.push(item.m);
-      submittedMatches.add(item.m.id);
+  results.forEach(r=>{
+    if(r.ok){
+      succeeded.push(r.m);
+      submittedMatches.add(r.m.id);
     } else {
-      failed.push(item.m);
+      failed.push(r.m);
     }
-  }
+  });
   await saveSubmittedMatches();
 
   if(failed.length > 0){
