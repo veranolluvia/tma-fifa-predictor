@@ -1233,7 +1233,23 @@ async function confirmExport(){
   // Immediate feedback while requests are in flight
   const header = document.querySelector('.export-header');
   const originalLabel = header.textContent;
-  header.textContent = "Submitting...";
+  const loadingMessages = [
+    "Checking the CP clauses...",
+    "Checking performance clauses...",
+    "Checking owners' approval...",
+    "Confirming laytime calculations...",
+    "Clearing customs...",
+    "Awaiting Master's confirmation...",
+    "Cross-checking the manifest...",
+    "Running stability calculations...",
+    "Awaiting stem confirmation..."
+  ];
+  let msgIndex = Math.floor(Math.random()*loadingMessages.length);
+  header.textContent = loadingMessages[msgIndex];
+  const loadingInterval = setInterval(()=>{
+    msgIndex = (msgIndex + 1) % loadingMessages.length;
+    header.textContent = loadingMessages[msgIndex];
+  }, 900);
   header.style.pointerEvents = 'none';
 
   // Fire all submissions concurrently - each still retries up to 2x on its own
@@ -1242,6 +1258,7 @@ async function confirmExport(){
     return {m: item.m, ok: ok};
   }));
 
+  clearInterval(loadingInterval);
   header.textContent = originalLabel;
   header.style.pointerEvents = '';
 
