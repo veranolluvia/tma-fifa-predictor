@@ -370,12 +370,9 @@
 <script>
 // ---------- DATA ----------
 // Source schedule times are labeled as listed (CEST, UTC+2). matchDateTime() converts to true UTC.
-// Actual results once a match is locked/finished. Fill in as matches complete:
-// e.g. 9: {home: 4, away: 0}
-const actualResults = {
-  // 9: {home: 4, away: 0},
-  // 10: {home: 2, away: 2}
-};
+// Actual results, fetched from the shared sheet on page load.
+// Keyed by numeric match id: {9: {home: 4, away: 0}, ...}
+let actualResults = {};
 
 const matches = [
   {id:1, date:"2026-06-11", time:"21:00", group:"A", home:"Mexico", away:"South Africa", md:1},
@@ -915,6 +912,72 @@ function renderCrewTable(rows){
   }catch(e){}
 }
 
+// ---------- ACTUAL RESULTS (for "Final: X-Y" subtext) ----------
+async function fetchActualResults(){
+  try{
+    const res = await fetch(SHEET_ENDPOINT + '?type=results');
+    const data = await res.json();
+    if(data.status === 'ok'){
+      applyResults(data.results);
+      return;
+    }
+  }catch(e){
+    // fall through to JSONP
+  }
+  try{
+    await fetchActualResultsJsonp();
+  }catch(e2){
+    // silently give up; "Final" subtext just won't show this load
+  }
+}
+
+function applyResults(results){
+  const out = {};
+  for(const matchId in results){
+    const num = parseInt(matchId.replace(/\D/g,''), 10);
+    if(!isNaN(num)) out[num] = results[matchId];
+  }
+  actualResults = out;
+}
+
+function fetchActualResultsJsonp(){
+  return new Promise((resolve, reject)=>{
+    const callbackName = 'resCallback_' + Date.now();
+    const script = document.createElement('script');
+    let settled = false;
+
+    window[callbackName] = function(data){
+      settled = true;
+      if(data.status === 'ok'){
+        applyResults(data.results);
+        resolve();
+      } else {
+        reject(new Error('bad response'));
+      }
+      delete window[callbackName];
+      script.remove();
+    };
+
+    script.src = SHEET_ENDPOINT + '?type=results&callback=' + callbackName;
+    script.onerror = function(){
+      if(!settled){
+        delete window[callbackName];
+        script.remove();
+        reject(new Error('script load failed'));
+      }
+    };
+    document.body.appendChild(script);
+
+    setTimeout(()=>{
+      if(!settled){
+        delete window[callbackName];
+        script.remove();
+        reject(new Error('timeout'));
+      }
+    }, 8000);
+  });
+}
+
 async function loadLeaderboard(){
   const content = document.getElementById('crewContent');
   const status = document.getElementById('crewStatus');
@@ -1379,6 +1442,7 @@ window.onerror = function(msg, src, line){
   updateClock();
   render();
   loadLeaderboard();
+  fetchActualResults().then(()=>render());
 })();
 </script>
 </body>
