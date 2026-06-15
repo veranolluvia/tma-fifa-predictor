@@ -69,6 +69,9 @@
   .status.locked{background:rgba(255,107,107,0.15); color:var(--red);}
   .status.active{background:rgba(58,123,213,0.15); color:var(--blue);}
   .status.submitted{background:rgba(0,44,115,0.12); color:var(--accent); font-weight:800;}
+  .status.exact{background:rgba(255,215,0,0.18); color:#b8860b; font-weight:800;}
+  .status.correct{background:rgba(58,123,213,0.15); color:var(--blue); font-weight:800;}
+  .status.wrong{background:rgba(217,72,61,0.15); color:var(--red);}
   .detail{display:none; margin-top:10px;}
   .detail.show{display:block;}
   .info-box{
@@ -651,7 +654,15 @@ function render(){
       const isSubmitted = submittedMatches.has(m.id);
       let statusClass, statusText;
       if(locked){
-        statusClass = 'locked'; statusText = 'Sailed';
+        const result = actualResults[m.id];
+        if(result && hasPrediction){
+          const verdict = scoreVerdict(p, result);
+          if(verdict === "Exact - bullseye"){ statusClass = 'exact'; statusText = 'Exact'; }
+          else if(verdict === "Correct result"){ statusClass = 'correct'; statusText = 'Correct'; }
+          else { statusClass = 'wrong'; statusText = 'Wrong'; }
+        } else {
+          statusClass = 'locked'; statusText = 'Sailed';
+        }
       } else if(isSubmitted){
         statusClass = 'submitted'; statusText = 'On Subs';
       } else if(hasPrediction){
@@ -1221,16 +1232,43 @@ function fetchMyPicksJsonpData(){
   });
 }
 
+// Returns a "X vs Y kicks off in Hh Mm" style string for the next upcoming
+// match, or null if there's no upcoming match.
+function nextKickoffMessage(){
+  const now = new Date();
+  const next = matches.find(m=>matchDateTime(m) > now);
+  if(!next) return null;
+  const diff = matchDateTime(next) - now;
+  const totalMin = Math.floor(diff/60000);
+  const dH = Math.floor(totalMin/60);
+  const dM = totalMin % 60;
+  const dSec = Math.floor((diff%60000)/1000);
+  let countdown;
+  if(dH > 0) countdown = `${dH}h ${dM}m`;
+  else if(dM > 0) countdown = `${dM}m ${dSec}s`;
+  else countdown = `${dSec}s`;
+  return `${next.home} vs ${next.away} kicks off in ${countdown}`;
+}
+
 async function loadMyPicks(){
   const box = document.getElementById('myPicksBox');
-  if(!userName || !userName.trim()){
-    box.innerHTML = '<div style="font-size:12px; color:var(--accent2); text-align:center;">Enter your name first.</div>';
+
+  // Toggle: if panel is currently open (has content), close it instead of reloading
+  if(box.dataset.open === 'true'){
+    box.innerHTML = '';
+    box.dataset.open = 'false';
     return;
   }
+
+  box.dataset.open = 'true';
   box.innerHTML = '<div style="font-size:12px; color:var(--muted); text-align:center;">Loading...</div>';
 
+  if(Object.keys(actualResults).length === 0){
+    await fetchActualResults();
+  }
+
   try{
-    const res = await fetch(SHEET_ENDPOINT + '?type=mypicks&name=' + encodeURIComponent(userName.trim()));
+    const res = await fetch(SHEET_ENDPOINT + '?type=allpicks');
     const data = await res.json();
     if(data.status === 'ok'){
       renderMyPicks(data);
@@ -1243,13 +1281,13 @@ async function loadMyPicks(){
   try{
     await loadMyPicksJsonp();
   }catch(e2){
-    box.innerHTML = '<div style="font-size:12px; color:var(--accent2); text-align:center;">Could not load your picks. Try again.</div>';
+    box.innerHTML = '<div style="font-size:12px; color:var(--accent2); text-align:center;">Could not load predictions. Try again.</div>';
   }
 }
 
 function loadMyPicksJsonp(){
   return new Promise((resolve, reject)=>{
-    const callbackName = 'mpCallback_' + Date.now();
+    const callbackName = 'apCallback_' + Date.now();
     const script = document.createElement('script');
     let settled = false;
 
@@ -1265,7 +1303,7 @@ function loadMyPicksJsonp(){
       script.remove();
     };
 
-    script.src = SHEET_ENDPOINT + '?type=mypicks&name=' + encodeURIComponent(userName.trim()) + '&callback=' + callbackName;
+    script.src = SHEET_ENDPOINT + '?type=allpicks&callback=' + callbackName;
     script.onerror = function(){
       if(!settled){
         delete window[callbackName];
@@ -1285,25 +1323,39 @@ function loadMyPicksJsonp(){
   });
 }
 
+// Renders everyone's latest predictions for matches that have kicked off
+// but don't have a result yet. If nothing qualifies, shows a fallback
+// "next kickoff" message instead.
 function renderMyPicks(data){
   const box = document.getElementById('myPicksBox');
-  if(!data.picks || data.picks.length === 0){
-    box.innerHTML = `<div style="font-size:12px; color:var(--muted); text-align:center;">No submitted picks found for "${data.name}" yet.</div>`;
+  const picks = data.picks || {};
+
+  const resolved = matches
+    .filter(m=>actualResults[m.id])
+    .sort((a,b)=>b.id-a.id);
+
+  if(resolved.length === 0){
+    const next = nextKickoffMessage();
+    box.innerHTML = next
+      ? `<div style="font-size:12px; color:var(--muted); text-align:center;">Nothing to show yet &middot; ${next}</div>`
+      : `<div style="font-size:12px; color:var(--muted); text-align:center;">Nothing to show yet.</div>`;
     return;
   }
-  const sorted = data.picks.slice().sort((a,b)=>{
-    const an = parseInt((a.matchId||'').replace(/\D/g,''))||0;
-    const bn = parseInt((b.matchId||'').replace(/\D/g,''))||0;
-    return an - bn;
-  });
-  let html = `<div style="font-size:12px; color:var(--accent); text-align:center; margin-bottom:6px; font-weight:700;">On record for ${data.name}:</div>`;
+
+  const m = resolved[0];
+  const actual = actualResults[m.id];
+  const entries = (picks["M"+m.id] || []).slice().sort((a,b)=>a.name.localeCompare(b.name));
+
+  let html = `<div style="font-size:12px; color:var(--accent); text-align:center; margin-bottom:6px; font-weight:700;">M${m.id}: ${m.home} vs ${m.away} &middot; Final: ${actual.home}-${actual.away}</div>`;
   html += '<div style="font-size:12.5px; color:var(--text); line-height:1.8;">';
-  sorted.forEach(p=>{
-    const m = matches.find(mm=>"M"+mm.id === p.matchId);
-    const label = m ? `${p.matchId}: ${m.home} vs ${m.away}` : p.matchId;
-    const lockTag = m && isLocked(m) ? ' 🔒' : '';
-    html += `${label} &rarr; <b>${p.predHome} - ${p.predAway}</b>${lockTag}<br>`;
-  });
+  if(entries.length === 0){
+    html += '<div style="color:var(--muted); text-align:center;">No predictions recorded for this match.</div>';
+  } else {
+    entries.forEach(e=>{
+      const verdict = scoreVerdict({home:e.predHome, away:e.predAway}, actual);
+      html += `${e.name}: ${e.predHome}-${e.predAway} (${verdict})<br>`;
+    });
+  }
   html += '</div>';
   box.innerHTML = html;
 }
