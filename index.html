@@ -1142,6 +1142,85 @@ function randomClosingLine(){
 }
 // ---------- PREDICTIONS OVERVIEW (local) ----------
 // ---------- MY SUBMITTED PICKS (server-side) ----------
+// ---------- RECONCILE LOCKED PREDICTIONS WITH SERVER RECORD ----------
+async function reconcileLockedPredictions(){
+  if(!userName || !userName.trim()) return;
+  let data = null;
+  try{
+    const res = await fetch(SHEET_ENDPOINT + '?type=mypicks&name=' + encodeURIComponent(userName.trim()));
+    const d = await res.json();
+    if(d.status === 'ok') data = d;
+  }catch(e){ /* try JSONP below */ }
+
+  if(!data){
+    try{ data = await fetchMyPicksJsonpData(); }catch(e2){ return; }
+  }
+  if(!data || !data.picks) return;
+
+  const onRecord = {};
+  data.picks.forEach(p=>{
+    const num = parseInt((p.matchId||'').replace(/\D/g,''), 10);
+    if(!isNaN(num)) onRecord[num] = {home: p.predHome, away: p.predAway};
+  });
+
+  let changed = false;
+  matches.forEach(m=>{
+    if(!isLocked(m)) return;
+    const record = onRecord[m.id];
+    if(record){
+      if(!predictions[m.id] || predictions[m.id].home !== record.home || predictions[m.id].away !== record.away){
+        predictions[m.id] = {home: record.home, away: record.away};
+        changed = true;
+      }
+    } else if(predictions[m.id]){
+      delete predictions[m.id];
+      changed = true;
+    }
+  });
+
+  if(changed){
+    await savePredictions();
+    render();
+  }
+}
+
+function fetchMyPicksJsonpData(){
+  return new Promise((resolve, reject)=>{
+    const callbackName = 'mpReconcile_' + Date.now();
+    const script = document.createElement('script');
+    let settled = false;
+
+    window[callbackName] = function(data){
+      settled = true;
+      if(data.status === 'ok'){
+        resolve(data);
+      } else {
+        reject(new Error('bad response'));
+      }
+      delete window[callbackName];
+      script.remove();
+    };
+
+    script.src = SHEET_ENDPOINT + '?type=mypicks&name=' + encodeURIComponent(userName.trim()) + '&callback=' + callbackName;
+    script.onerror = function(){
+      if(!settled){
+        delete window[callbackName];
+        script.remove();
+        reject(new Error('script load failed'));
+      }
+    };
+    document.body.appendChild(script);
+
+    setTimeout(()=>{
+      if(!settled){
+        delete window[callbackName];
+        script.remove();
+        reject(new Error('timeout'));
+      }
+    }, 8000);
+  });
+}
+
 async function loadMyPicks(){
   const box = document.getElementById('myPicksBox');
   if(!userName || !userName.trim()){
@@ -1443,6 +1522,7 @@ window.onerror = function(msg, src, line){
   render();
   loadLeaderboard();
   fetchActualResults().then(()=>render());
+  reconcileLockedPredictions();
 })();
 </script>
 </body>
