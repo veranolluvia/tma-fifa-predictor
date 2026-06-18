@@ -298,6 +298,78 @@
   .move-up{ color:var(--green); }
   .move-down{ color:var(--red); }
   .move-same{ color:var(--muted); }
+
+  /* ---------- Custom Score Keypad ---------- */
+  .score-btn{
+    width:54px; height:48px; text-align:center; font-size:20px; font-weight:700;
+    background:var(--bg); color:var(--text); border:2px solid var(--line); border-radius:10px;
+    cursor:pointer; transition:border-color 0.2s;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .score-btn.filled{ border-color:var(--accent); color:var(--accent); }
+  .score-btn.disabled{ opacity:0.4; cursor:default; }
+  .keypad-overlay{
+    position:fixed; inset:0; z-index:400; display:none;
+    align-items:flex-end; justify-content:center;
+    background:rgba(5,15,29,0.6);
+  }
+  .keypad-overlay.show{ display:flex; }
+  .keypad-box{
+    background:var(--card); border-radius:20px 20px 0 0; padding:16px 16px 32px;
+    width:100%; max-width:480px;
+    animation:keypad-up 0.25s ease-out;
+  }
+  @keyframes keypad-up{
+    0%{ transform:translateY(100%); }
+    100%{ transform:translateY(0); }
+  }
+  .keypad-title{
+    font-size:13px; color:var(--muted); text-align:center; margin-bottom:12px; font-weight:600;
+  }
+  .keypad-grid{
+    display:grid; grid-template-columns:repeat(6,1fr); gap:8px; margin-bottom:10px;
+  }
+  .keypad-key{
+    height:52px; border-radius:12px; background:var(--card2); color:var(--text);
+    font-size:22px; font-weight:800; border:none; cursor:pointer;
+    transition:background 0.1s, transform 0.1s;
+  }
+  .keypad-key:active{ background:var(--accent); color:var(--bg); transform:scale(0.94); }
+  .keypad-key.selected{ background:var(--accent); color:var(--bg); }
+  .keypad-higher{
+    width:100%; height:48px; border-radius:12px; background:var(--card2);
+    color:var(--muted); font-size:14px; font-weight:700; border:1px dashed var(--line);
+    cursor:pointer; margin-bottom:8px;
+  }
+  .keypad-cancel{
+    width:100%; height:44px; border-radius:12px; background:transparent;
+    color:var(--accent2); font-size:14px; font-weight:700; border:none; cursor:pointer;
+  }
+  .really-overlay{
+    position:fixed; inset:0; z-index:500; display:none;
+    align-items:center; justify-content:center;
+    background:rgba(5,15,29,0.75);
+  }
+  .really-overlay.show{ display:flex; }
+  .really-box{
+    background:var(--card); border-radius:16px; padding:24px 20px;
+    max-width:300px; width:90%; text-align:center;
+    animation:welcome-pop 0.3s cubic-bezier(0.34,1.56,0.64,1);
+    border:1px solid var(--line);
+  }
+  .really-emoji{ font-size:48px; margin-bottom:8px; }
+  .really-title{ font-size:18px; font-weight:900; color:var(--text); margin-bottom:6px; }
+  .really-sub{ font-size:13px; color:var(--muted); margin-bottom:16px; }
+  .really-input{
+    width:80px; height:52px; text-align:center; font-size:24px; font-weight:800;
+    background:var(--bg); color:var(--text); border:2px solid var(--accent);
+    border-radius:10px; margin-bottom:14px;
+  }
+  .really-row{ display:flex; gap:8px; }
+  .really-confirm{ flex:1; height:44px; border-radius:10px; background:var(--accent);
+    color:var(--bg); border:none; font-size:14px; font-weight:800; cursor:pointer; }
+  .really-cancel{ flex:1; height:44px; border-radius:10px; background:var(--card2);
+    color:var(--muted); border:none; font-size:14px; font-weight:700; cursor:pointer; }
 </style>
 </head>
 <body>
@@ -331,6 +403,36 @@
   <div id="myPicksBox" style="margin-top:8px;"></div>
 
   <div class="anim-overlay" id="animOverlay"></div>
+  <div class="keypad-overlay" id="keypadOverlay" onclick="closeKeypad()">
+    <div class="keypad-box" onclick="event.stopPropagation()">
+      <div class="keypad-title" id="keypadTitle">Score</div>
+      <div class="keypad-grid" id="keypadGrid">
+        <button class="keypad-key" data-val="0" onclick="keypadSelect(0)">0</button>
+        <button class="keypad-key" data-val="1" onclick="keypadSelect(1)">1</button>
+        <button class="keypad-key" data-val="2" onclick="keypadSelect(2)">2</button>
+        <button class="keypad-key" data-val="3" onclick="keypadSelect(3)">3</button>
+        <button class="keypad-key" data-val="4" onclick="keypadSelect(4)">4</button>
+        <button class="keypad-key" data-val="5" onclick="keypadSelect(5)">5</button>
+      </div>
+      <button class="keypad-higher" onclick="openReally()">6+ &nbsp;🤨</button>
+      <button class="keypad-cancel" onclick="closeKeypad()">Cancel</button>
+    </div>
+  </div>
+
+  <div class="really-overlay" id="reallyOverlay">
+    <div class="really-box">
+      <div class="really-emoji">🤨</div>
+      <div class="really-title">Really?</div>
+      <div class="really-sub">A score that high? Bold. Enter it if you dare.</div>
+      <input class="really-input" id="reallyInput" type="number" inputmode="numeric"
+        min="6" max="20" placeholder="?" onkeydown="if(event.key==='Enter')confirmReally()">
+      <div class="really-row">
+        <button class="really-cancel" onclick="closeReally()">Maybe not</button>
+        <button class="really-confirm" onclick="confirmReally()">I'm sure 🔥</button>
+      </div>
+    </div>
+  </div>
+
   <div class="confirm-overlay" id="confirmOverlay"></div>
 
   <div id="matchdays"></div>
@@ -692,9 +794,11 @@ function render(){
           </div>
           <div class="pred-row" onclick="event.stopPropagation()">
             <div class="pred-team">${m.home}</div>
-            <input type="number" inputmode="numeric" pattern="[0-9]*" min="0" max="20" id="home-${m.id}" class="${p.home!==undefined?'filled':''}" value="${p.home!==undefined?p.home:''}" ${locked?'disabled':''} oninput="markFilled(${m.id})" onchange="updatePred(${m.id})">
+            <div class="score-btn ${p.home!==undefined?'filled':''} ${locked?'disabled':''}"
+              id="home-${m.id}" onclick="${locked?'':'openKeypad('+m.id+',\'home\')'}">${p.home!==undefined?p.home:'—'}</div>
             <div class="vs">:</div>
-            <input type="number" inputmode="numeric" pattern="[0-9]*" min="0" max="20" id="away-${m.id}" class="${p.away!==undefined?'filled':''}" value="${p.away!==undefined?p.away:''}" ${locked?'disabled':''} oninput="markFilled(${m.id})" onchange="updatePred(${m.id})">
+            <div class="score-btn ${p.away!==undefined?'filled':''} ${locked?'disabled':''}"
+              id="away-${m.id}" onclick="${locked?'':'openKeypad('+m.id+',\'away\')'}">${p.away!==undefined?p.away:'—'}</div>
             <div class="pred-team">${m.away}</div>
           </div>
           ${locked && actualResults[m.id] ? `<div class="actual-result">Final: ${actualResults[m.id].home} - ${actualResults[m.id].away}${(p.home!==undefined && p.away!==undefined) ? ` &middot; Your call: ${p.home}-${p.away} (${scoreVerdict(p, actualResults[m.id])})` : ''}</div>` : ''}
@@ -754,6 +858,75 @@ function markFilled(id){
   const a = document.getElementById('away-'+id);
   h.classList.toggle('filled', h.value !== '');
   a.classList.toggle('filled', a.value !== '');
+}
+
+
+// ---------- CUSTOM SCORE KEYPAD ----------
+let keypadTarget = null; // {matchId, side} side = 'home' | 'away'
+
+function openKeypad(matchId, side){
+  keypadTarget = {matchId, side};
+  const p = predictions[matchId] || {};
+  const current = side === 'home' ? p.home : p.away;
+  const m = matches.find(mm=>mm.id===matchId);
+  const label = m ? (side==='home' ? m.home : m.away) : side;
+
+  const overlay = document.getElementById('keypadOverlay');
+  const title = document.getElementById('keypadTitle');
+  const grid = document.getElementById('keypadGrid');
+
+  title.textContent = `Score for ${label}`;
+  // mark current selection
+  grid.querySelectorAll('.keypad-key').forEach(btn=>{
+    btn.classList.toggle('selected', parseInt(btn.dataset.val)===current);
+  });
+  overlay.classList.add('show');
+}
+
+function keypadSelect(val){
+  if(keypadTarget===null) return;
+  const {matchId, side} = keypadTarget;
+  predictions[matchId] = predictions[matchId] || {};
+  if(side==='home') predictions[matchId].home = val;
+  else predictions[matchId].away = val;
+
+  // mark submitted match as edited if needed
+  if(submittedMatches && submittedMatches.has(matchId)){
+    submittedMatches.delete(matchId);
+    if(typeof saveSubmittedMatches === 'function') saveSubmittedMatches();
+  }
+
+  savePredictions();
+  closeKeypad();
+  render();
+}
+
+function closeKeypad(){
+  document.getElementById('keypadOverlay').classList.remove('show');
+  keypadTarget = null;
+}
+
+function openReally(){
+  closeKeypad();
+  document.getElementById('reallyOverlay').classList.add('show');
+  const inp = document.getElementById('reallyInput');
+  inp.value = '';
+  setTimeout(()=>inp.focus(), 100);
+}
+
+function confirmReally(){
+  const val = parseInt(document.getElementById('reallyInput').value, 10);
+  if(isNaN(val) || val < 0 || val > 20){
+    document.getElementById('reallyInput').style.borderColor = 'var(--accent2)';
+    return;
+  }
+  closeReally();
+  if(keypadTarget===null) return;
+  keypadSelect(val);
+}
+
+function closeReally(){
+  document.getElementById('reallyOverlay').classList.remove('show');
 }
 
 // ---------- BUTTON ANIMATIONS ----------
