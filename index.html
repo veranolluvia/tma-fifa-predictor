@@ -795,10 +795,12 @@ function render(){
           <div class="pred-row" onclick="event.stopPropagation()">
             <div class="pred-team">${m.home}</div>
             <div class="score-btn ${p.home!==undefined?'filled':''} ${locked?'disabled':''}"
-              id="home-${m.id}" onclick="${locked?'':'openKeypad('+m.id+',\'home\')'}">${p.home!==undefined?p.home:'—'}</div>
+              id="home-${m.id}" data-mid="${m.id}" data-side="home"
+              ${locked?'':'onclick="handleScoreClick(this)"'}>${p.home!==undefined?p.home:'—'}</div>
             <div class="vs">:</div>
             <div class="score-btn ${p.away!==undefined?'filled':''} ${locked?'disabled':''}"
-              id="away-${m.id}" onclick="${locked?'':'openKeypad('+m.id+',\'away\')'}">${p.away!==undefined?p.away:'—'}</div>
+              id="away-${m.id}" data-mid="${m.id}" data-side="away"
+              ${locked?'':'onclick="handleScoreClick(this)"'}>${p.away!==undefined?p.away:'—'}</div>
             <div class="pred-team">${m.away}</div>
           </div>
           ${locked && actualResults[m.id] ? `<div class="actual-result">Final: ${actualResults[m.id].home} - ${actualResults[m.id].away}${(p.home!==undefined && p.away!==undefined) ? ` &middot; Your call: ${p.home}-${p.away} (${scoreVerdict(p, actualResults[m.id])})` : ''}</div>` : ''}
@@ -864,6 +866,12 @@ function markFilled(id){
 // ---------- CUSTOM SCORE KEYPAD ----------
 let keypadTarget = null; // {matchId, side} side = 'home' | 'away'
 
+function handleScoreClick(el){
+  const matchId = parseInt(el.dataset.mid, 10);
+  const side = el.dataset.side;
+  openKeypad(matchId, side);
+}
+
 function openKeypad(matchId, side){
   keypadTarget = {matchId, side};
   const p = predictions[matchId] || {};
@@ -899,6 +907,12 @@ function keypadSelect(val){
   savePredictions();
   closeKeypad();
   render();
+
+  // Auto-open the other side if not yet set
+  if(side === 'home'){
+    const p = predictions[matchId] || {};
+    if(p.away === undefined) setTimeout(()=>openKeypad(matchId, 'away'), 200);
+  }
 }
 
 function closeKeypad(){
@@ -907,7 +921,10 @@ function closeKeypad(){
 }
 
 function openReally(){
+  // Save target BEFORE closeKeypad nulls it
+  const savedTarget = keypadTarget;
   closeKeypad();
+  keypadTarget = savedTarget;
   document.getElementById('reallyOverlay').classList.add('show');
   const inp = document.getElementById('reallyInput');
   inp.value = '';
