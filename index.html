@@ -54,6 +54,17 @@
   }
   .match{
     padding:12px 14px; border-top:1px solid var(--line);
+    border:2px solid transparent;
+  }
+  .match.needs-attention{
+    border:2px solid transparent;
+    border-radius:10px;
+    animation:attention-pulse 2s ease-in-out infinite;
+    margin:4px 0;
+  }
+  @keyframes attention-pulse{
+    0%,100%{ border-color:rgba(245,197,24,0.15); box-shadow:0 0 0 0 rgba(245,197,24,0); }
+    50%{ border-color:rgba(245,197,24,0.9); box-shadow:0 0 8px 2px rgba(245,197,24,0.2); }
   }
   .match:nth-child(even){ background:var(--card2); }
   .match:nth-child(odd){ background:var(--card); }
@@ -478,6 +489,7 @@
 // Actual results, fetched from the shared sheet on page load.
 // Keyed by numeric match id: {9: {home: 4, away: 0}, ...}
 let actualResults = {};
+let serverPredictions = {};
 
 const matches = [
   {id:1, date:"2026-06-11", time:"21:00", group:"A", home:"Mexico", away:"South Africa", md:1},
@@ -542,22 +554,32 @@ const matches = [
   {id:47, date:"2026-06-24", time:"01:00", group:"L", home:"Panama", away:"Croatia", md:14},
   {id:48, date:"2026-06-24", time:"04:00", group:"K", home:"Colombia", away:"DR Congo", md:14},
   {id:49, date:"2026-06-24", time:"19:00", group:"B", home:"Switzerland", away:"Canada", md:14},
-  {id:50, date:"2026-06-24", time:"22:00", group:"B", home:"Bosnia & Herzegovina", away:"Qatar", md:14},
+  {id:50, date:"2026-06-24", time:"19:00", group:"B", home:"Bosnia & Herzegovina", away:"Qatar", md:14},
 
-  {id:51, date:"2026-06-25", time:"01:00", group:"C", home:"Scotland", away:"Brazil", md:15},
-  {id:52, date:"2026-06-25", time:"04:00", group:"C", home:"Morocco", away:"Haiti", md:15},
-  {id:53, date:"2026-06-25", time:"19:00", group:"A", home:"Czechia", away:"Mexico", md:15},
-  {id:54, date:"2026-06-25", time:"22:00", group:"A", home:"South Africa", away:"South Korea", md:15},
+  {id:51, date:"2026-06-24", time:"22:00", group:"C", home:"Scotland", away:"Brazil", md:15},
+  {id:52, date:"2026-06-24", time:"22:00", group:"C", home:"Morocco", away:"Haiti", md:15},
+  {id:53, date:"2026-06-25", time:"01:00", group:"A", home:"Czechia", away:"Mexico", md:15},
+  {id:54, date:"2026-06-25", time:"01:00", group:"A", home:"South Africa", away:"South Korea", md:15},
+  {id:55, date:"2026-06-25", time:"20:00", group:"E", home:"Ecuador", away:"Germany", md:15},
+  {id:56, date:"2026-06-25", time:"20:00", group:"E", home:"Curaçao", away:"Ivory Coast", md:15},
+  {id:57, date:"2026-06-25", time:"23:00", group:"F", home:"Japan", away:"Sweden", md:15},
+  {id:58, date:"2026-06-25", time:"23:00", group:"F", home:"Tunisia", away:"Netherlands", md:15},
 
-  {id:55, date:"2026-06-26", time:"01:00", group:"D", home:"Turkiye", away:"USA", md:16},
-  {id:56, date:"2026-06-26", time:"04:00", group:"D", home:"Paraguay", away:"Australia", md:16},
-  {id:57, date:"2026-06-26", time:"19:00", group:"I", home:"Norway", away:"France", md:16},
-  {id:58, date:"2026-06-26", time:"22:00", group:"I", home:"Senegal", away:"Iraq", md:16},
+  {id:59, date:"2026-06-26", time:"02:00", group:"D", home:"Turkiye", away:"USA", md:16},
+  {id:60, date:"2026-06-26", time:"02:00", group:"D", home:"Paraguay", away:"Australia", md:16},
+  {id:61, date:"2026-06-26", time:"19:00", group:"I", home:"Norway", away:"France", md:16},
+  {id:62, date:"2026-06-26", time:"19:00", group:"I", home:"Senegal", away:"Iraq", md:16},
+  {id:63, date:"2026-06-27", time:"00:00", group:"H", home:"Cape Verde", away:"Saudi Arabia", md:16},
+  {id:64, date:"2026-06-27", time:"00:00", group:"H", home:"Uruguay", away:"Spain", md:16},
+  {id:65, date:"2026-06-27", time:"03:00", group:"G", home:"Egypt", away:"Iran", md:16},
+  {id:66, date:"2026-06-27", time:"03:00", group:"G", home:"New Zealand", away:"Belgium", md:16},
 
-  {id:59, date:"2026-06-27", time:"01:00", group:"H", home:"Cape Verde", away:"Saudi Arabia", md:17},
-  {id:60, date:"2026-06-27", time:"04:00", group:"H", home:"Uruguay", away:"Spain", md:17},
-  {id:61, date:"2026-06-27", time:"19:00", group:"G", home:"Egypt", away:"Iran", md:17},
-  {id:62, date:"2026-06-27", time:"22:00", group:"G", home:"New Zealand", away:"Belgium", md:17}
+  {id:67, date:"2026-06-27", time:"21:00", group:"L", home:"Panama", away:"England", md:17},
+  {id:68, date:"2026-06-27", time:"21:00", group:"L", home:"Croatia", away:"Ghana", md:17},
+  {id:69, date:"2026-06-27", time:"23:30", group:"K", home:"Colombia", away:"Portugal", md:17},
+  {id:70, date:"2026-06-27", time:"23:30", group:"K", home:"DR Congo", away:"Uzbekistan", md:17},
+  {id:71, date:"2026-06-28", time:"02:00", group:"J", home:"Algeria", away:"Austria", md:17},
+  {id:72, date:"2026-06-28", time:"02:00", group:"J", home:"Jordan", away:"Argentina", md:17}
 ];
 
 // Witty / context facts per match (best-effort, fun trivia style)
@@ -776,7 +798,18 @@ function render(){
       const stats = getStats(m);
 
       const matchDiv = document.createElement('div');
-      matchDiv.className = 'match';
+
+      // Attention blink for today's unconfirmed/mismatched matches
+      const todayStr = new Date().toISOString().slice(0,10);
+      const isToday = m.date === todayStr;
+      const p_local = predictions[m.id] || {};
+      const p_server = serverPredictions[m.id];
+      const hasLocalPred = p_local.home !== undefined && p_local.away !== undefined;
+      const hasMismatch = hasLocalPred && p_server &&
+        (p_local.home !== p_server.home || p_local.away !== p_server.away);
+      const needsAttention = isToday && !locked && (!hasLocalPred || hasMismatch);
+
+      matchDiv.className = 'match' + (needsAttention ? ' needs-attention' : '');
       matchDiv.innerHTML = `
         <div class="match-row" onclick="toggleDetail(${m.id})">
           <div>
@@ -1364,6 +1397,9 @@ async function reconcileLockedPredictions(){
     if(!isNaN(num)) onRecord[num] = {home: p.predHome, away: p.predAway};
   });
 
+  // Store all server picks for mismatch detection
+  serverPredictions = Object.assign({}, onRecord);
+
   let changed = false;
   matches.forEach(m=>{
     if(!isLocked(m)) return;
@@ -1667,6 +1703,11 @@ async function confirmExport(){
   }
 
   showConfirmationPanel(succeeded, failed, ts);
+  // Update serverPredictions so blinking clears on confirmed matches
+  succeeded.forEach(m=>{
+    const p = predictions[m.id];
+    if(p && p.home !== undefined) serverPredictions[m.id] = {home: p.home, away: p.away};
+  });
   render();
 }
 
